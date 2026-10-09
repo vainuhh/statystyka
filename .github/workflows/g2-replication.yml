@@ -20,6 +20,8 @@ jobs:
           cat g2-payload/part{1..6}.txt | base64 -d > /tmp/g2.tar.xz
           echo '0f821cc64fc3eb2d57f2f2d23d991d2e92c01b8c0301ea50cb93666a62edb73d  /tmp/g2.tar.xz' | sha256sum -c -
           tar -xJf /tmp/g2.tar.xz
+          cp latex_variant/shared_poc.R quarto_variant/shared_poc.R
+          cmp latex_variant/shared_poc.R quarto_variant/shared_poc.R
           test -f ci/run_g2.sh
           test -f ci/verify_g2.py
       - name: Install R
@@ -38,8 +40,8 @@ jobs:
             fonts-noto-core fonts-dejavu-core poppler-utils
       - name: Install R document dependencies
         run: |
-          Rscript --vanilla -e 'install.packages(c("knitr", "rmarkdown"), repos="https://cloud.r-project.org")'
-          Rscript --vanilla -e 'stopifnot(requireNamespace("knitr", quietly=TRUE))'
+          Rscript --vanilla -e 'install.packages(c("knitr", "rmarkdown"), repos=Sys.getenv("RSPM", "https://cloud.r-project.org"))'
+          Rscript --vanilla -e 'stopifnot(requireNamespace("knitr", quietly=TRUE), requireNamespace("rmarkdown", quietly=TRUE))'
       - name: Build both technologies twice
         shell: bash
         run: |
