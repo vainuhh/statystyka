@@ -1,0 +1,76 @@
+name: G2 strict reproducibility - Quarto versus LaTeX R
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'g2-payload/**'
+      - '.github/workflows/g2-replication.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Check out public prototype
+        uses: actions/checkout@v4
+      - name: Recover source files and verify integrity
+        shell: bash
+        run: |
+          cat g2-payload/part{1..6}.txt | base64 -d > /tmp/g2.tar.xz
+          echo '0f821cc64fc3eb2d57f2f2d23d991d2e92c01b8c0301ea50cb93666a62edb73d  /tmp/g2.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/g2.tar.xz
+          test -f ci/run_g2.sh
+          test -f ci/verify_g2.py
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      - name: Install Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+      - name: Install LuaLaTeX and fonts
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            texlive-luatex texlive-latex-extra texlive-latex-recommended \
+            texlive-pictures texlive-fonts-recommended latexmk \
+            fonts-noto-core fonts-dejavu-core poppler-utils
+      - name: Install R document dependencies
+        run: |
+          Rscript --vanilla -e 'install.packages(c("knitr", "rmarkdown"), repos="https://cloud.r-project.org")'
+          Rscript --vanilla -e 'stopifnot(requireNamespace("knitr", quietly=TRUE))'
+      - name: Build both technologies twice
+        shell: bash
+        run: |
+          set +e
+          bash ci/run_g2.sh
+          result=$?
+          mkdir -p G2_RUN_RESULTS
+          echo "$result" > G2_RUN_RESULTS/build_status.txt
+          exit 0
+      - name: Verify artifacts and reproducibility
+        shell: bash
+        run: |
+          set +e
+          python3 ci/verify_g2.py > G2_RUN_RESULTS/verification.txt 2>&1
+          result=$?
+          echo "$result" > G2_RUN_RESULTS/verify_status.txt
+          cat G2_RUN_RESULTS/verification.txt
+          exit 0
+      - name: Archive complete run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: G2_RUN_RESULTS
+          path: G2_RUN_RESULTS/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fail workflow if tests did not pass
+        if: always()
+        shell: bash
+        run: |
+          test -f G2_RUN_RESULTS/build_status.txt
+          test "$(cat G2_RUN_RESULTS/build_status.txt)" = "0"
+          test -f G2_RUN_RESULTS/verify_status.txt
+          test "$(cat G2_RUN_RESULTS/verify_status.txt)" = "0"
